@@ -1,4 +1,4 @@
-from selenium import webdriver
+#from selenium import webdriver
 import pandas as pd
 import numpy as np
 import datetime
@@ -13,6 +13,13 @@ import json
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from sklearn.metrics.pairwise import cosine_similarity
+import logging
+from bs4 import BeautifulSoup
+
+logging.basicConfig(level=logging.INFO)
+
+
+
 
 
 #nltk.download('wordnet')
@@ -50,91 +57,62 @@ def clean_text(text):
     return ' '.join(words)
 
 
+def process_news_data(urls, source_name, topics_to_drop):
+    # Create DataFrame from the dictionary
+    df_news = pd.DataFrame.from_dict(urls[source_name], orient='index').reset_index().rename(columns={'index': 'Url'})
+    
+    # Remove non-English entries
+    df_news = df_news[df_news['Title'].apply(is_english_sentence)]
+    
+    # Extract topics from 'Url'
+    df_news['Topic'] = df_news['Url'].str.extract(r'com/([^/]+)/')[0]
+    
+    # Drop rows with unwanted topics
+    df_news = df_news[~df_news['Topic'].isin(topics_to_drop)].reset_index(drop=True)
+    
+    # Print topic counts
+    print_topic_counts(df_news, source_name)
+    
+    return df_news
 
-
-
-def Extract_todays_urls_from_BBC_sitemap(sitemaps:list,namespaces):
+def Extract_todays_urls_from_sitemaps(sitemaps: list, namespaces: dict, date_tag: str):
     """
     This function extracts the URLs and Last Modified
-      and Title from XML sitemaps for today's date from BBC sitemap
+    and Title from XML sitemaps for today's date from given sitemaps
     
+    Args:
+    sitemaps (list): List of sitemap URLs to parse.
+    namespaces (dict): Dictionary of XML namespaces.
+    date_tag (str): The XML tag used to find the date (e.g., 'sitemap:lastmod' or 'news:publication_date').
+
+    Returns:
+    dict: Dictionary of URLs with their last modified date and title.
     """
     sitemap_data = {}
+    today = datetime.date.today().isoformat()
+
     for sitemap in sitemaps:
-        
-        driver = webdriver.Chrome()
+        response = requests.get(sitemap)
+        sitemap_xml = response.content
 
-        driver.get(sitemap)
-        sitemap_xml = driver.page_source
+        root = etree.fromstring(sitemap_xml)
 
-        root = etree.fromstring(sitemap_xml.encode('utf-8'))
-
-        today = datetime.date.today().isoformat()
-        namespace = {'sitemap': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
-
-        urls = root.findall('.//sitemap:url', namespaces=namespace)
+        urls = root.findall('.//sitemap:url', namespaces=namespaces)
 
         # Extract lastmod, URL, and news title for each <url> element with today's last modified date
         for url in urls:
-            lastmod = url.findtext('.//sitemap:lastmod', namespaces=namespace)
-            loc = url.findtext('.//sitemap:loc', namespaces=namespace)
+            lastmod = url.findtext(f'.//{date_tag}', namespaces=namespaces)
+            loc = url.findtext('.//sitemap:loc', namespaces=namespaces)
             news_title = url.findtext('.//news:title', namespaces=namespaces)
             
-            if lastmod.startswith(today):
+            if lastmod and lastmod.startswith(today):
                 sitemap_data[loc] = {
-                    'Last Modified': lastmod,
-                    'Title': news_title
-
-                }
-
-        driver.quit()
-        return sitemap_data
-    
-
-
-def Extract_todays_urls_from_skysitemap(sitemaps: list, namespaces):
-
-    """
-    This function extracts the URLs and Last Modified
-      and Title from XML sitemaps for today's date from sky sitemap
-    
-    """
-     
-
-    sitemap_data = {}
-    for sitemap in sitemaps:
-        driver = webdriver.Chrome()
-
-        driver.get(sitemap)
-        sitemap_xml = driver.page_source
-
-        root = etree.fromstring(sitemap_xml.encode('utf-8'))
-
-
-        today = datetime.date.today().isoformat()
-        namespace = {'sitemap': 'http://www.sitemaps.org/schemas/sitemap/0.9', 'news': 'http://www.google.com/schemas/sitemap-news/0.9'}
-
-        urls = root.findall('.//sitemap:url', namespaces=namespace)
-
-        # Extract lastmod, URL, and news title for each <url> element with today's last modified date
-        for url in urls:
-            lastmod = url.findtext('.//news:publication_date', namespaces=namespace)
-            loc = url.findtext('.//sitemap:loc', namespaces=namespace)
-            news_title = url.findtext('.//news:title', namespaces=namespace)
-            
-            if lastmod.startswith(today):
-                sitemap_data[loc] = {
+                    'index':loc,
                     'Last Modified': lastmod,
                     'Title': news_title
                 }
 
-
-        driver.quit()
-    
-        
     return sitemap_data
-
-
 
 
 
@@ -187,47 +165,67 @@ def calculate_similarity(title1:str, title2:str,model:str = 'distilbert-base-nli
 
 
 
-def request_sentences_from_url_(url:str):
+
+
+
+def remove_elements(input_string: str):
     """
-    This  function extracts the main article content from a URL using 
-    `requests` and `lxml`. It returns the article body as a list of sentences after 
-    removing unnecessary tags. Handles fetch errors with an error message.
+    This function removes all HTML tags and their content from the input string.
     """
-
-
-
-    article_body = []
-    response = requests.get(url)
-
-    if  response.status_code != 200:
-        print(f"Failed to fetch the web page. Status Code: {response.status_code}")
-        return
-
-    page_source = response.text
-    tree = etree.HTML(page_source)
-    if tree is not None:
-        article_element = tree.find(".//article")
-        if article_element is not None:
-            outer_html = etree.tostring(article_element, encoding='unicode')
-            article_body = remove_elements(outer_html)
-
-    print("Article has been Extracted")
-
-        
+    # Parse the input string as HTML
+    soup = BeautifulSoup(input_string, 'html.parser')
     
-    return article_body
-
-
-
-def remove_elements(input_string:str):
-    """
-    This function removes all data between < >.
+    # Remove all tags and their content
+    cleaned_string = soup.get_text(separator=' ', strip=True)
     
-    """
-
-    pattern = r"<.*?>"
-    cleaned_string = re.sub(pattern, "", input_string)
     return cleaned_string
+
+
+def request_sentences_from_urls(urls, timeout=20):
+    """
+    Extracts the main article content from a list of URLs using `requests` and `lxml`.
+    Returns a dictionary containing article bodies for each URL.
+    Handles fetch errors gracefully and returns None for failed URLs.
+    """
+
+    articles_dict = {}
+
+    for idx, url in enumerate(list(urls.Url), start=1):
+        if (idx-1)%10 ==0:
+            logging.info(f"\nProcessing URL {idx-1}/{len(urls)}")
+
+        try:
+            response = requests.get(url, timeout=timeout)
+            response.raise_for_status()  # Raise exception for HTTP errors
+        except requests.RequestException as e:
+            logging.error(f"Failed to fetch the web page: {e}")
+            continue
+        except TimeoutError:
+            logging.error(f"Timeout occurred while fetching URL: {url}")
+            continue
+
+        try:
+            tree = etree.HTML(response.content)
+            article_element = tree.find(".//article")
+            
+            if article_element is not None:
+                outer_html = etree.tostring(article_element, encoding='unicode')
+                
+                article_body = remove_elements(outer_html)
+                
+                article = []
+                for line in (i for i in article_body.split("\n") if len(i) >= 40):
+                    article.append(line)
+                articles_dict[urls["Title"][idx-1]] = article
+                #logging.info("Article has been extracted")
+            else:
+                logging.warning("No article content found on the page.")
+                articles_dict[url] = None
+        except Exception as e:
+            logging.error(f"Error extracting article content: {e} URL: {url}")
+            articles_dict[url] = None
+
+    return articles_dict
 
 
 
