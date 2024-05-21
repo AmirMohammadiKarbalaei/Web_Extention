@@ -16,6 +16,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 import logging
 from bs4 import BeautifulSoup
 
+import asyncio
+import aiohttp
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -63,6 +66,8 @@ def process_news_data(urls, source_name, topics_to_drop):
     
     # Remove non-English entries
     df_news = df_news[df_news['Title'].apply(is_english_sentence)]
+
+    df_news = df_news[~df_news['Url'].str.contains('live')] #remove live links
     
     # Extract topics from 'Url'
     df_news['Topic'] = df_news['Url'].str.extract(r'com/([^/]+)/')[0]
@@ -184,49 +189,89 @@ def remove_elements(input_string: str):
     return cleaned_string
 
 
-def request_sentences_from_urls(urls, timeout=20):
-    """
-    Extracts the main article content from a list of URLs using `requests` and `lxml`.
-    Returns a dictionary containing article bodies for each URL.
-    Handles fetch errors gracefully and returns None for failed URLs.
-    """
+# def request_sentences_from_urls(urls, timeout=20):
+#     """
+#     Extracts the main article content from a list of URLs using `requests` and `lxml`.
+#     Returns a dictionary containing article bodies for each URL.
+#     Handles fetch errors gracefully and returns None for failed URLs.
+#     """
 
+#     articles_dict = {}
+
+#     for idx, url in enumerate(list(urls.Url), start=1):
+#         if (idx-1)%10 ==0:
+#             logging.info(f"\nProcessing URL {idx-1}/{len(urls)}")
+
+#         try:
+#             response = requests.get(url, timeout=timeout)
+#             response.raise_for_status()  # Raise exception for HTTP errors
+#         except requests.RequestException as e:
+#             logging.error(f"Failed to fetch the web page: {e}")
+#             continue
+#         except TimeoutError:
+#             logging.error(f"Timeout occurred while fetching URL: {url}")
+#             continue
+
+#         try:
+#             tree = etree.HTML(response.content)
+#             article_element = tree.find(".//article")
+            
+#             if article_element is not None:
+#                 outer_html = etree.tostring(article_element, encoding='unicode')
+                
+#                 article_body = remove_elements(outer_html)
+                
+#                 article = []
+#                 for line in (i for i in article_body.split("\n") if len(i) >= 40):
+#                     article.append(line)
+#                 articles_dict[urls["Title"][idx-1]] = article
+#                 #logging.info("Article has been extracted")
+#             else:
+#                 logging.warning("No article content found on the page.")
+#                 continue
+#         except Exception as e:
+#             logging.error(f"Error extracting article content: {e} URL: {url}")
+#             continue
+
+#     return articles_dict
+async def fetch_url(session, url, timeout):
+    try:
+        async with session.get(url, timeout=timeout) as response:
+            response.raise_for_status()
+            return await response.text()
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        logging.error(f"Error fetching URL {url}: {e}")
+        return None
+
+async def request_sentences_from_urls_async(urls, timeout=20):
     articles_dict = {}
 
-    for idx, url in enumerate(list(urls.Url), start=1):
-        if (idx-1)%10 ==0:
-            logging.info(f"\nProcessing URL {idx-1}/{len(urls)}")
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for idx, url in enumerate(urls.Url, start=1):
+            if (idx - 1) % 100 == 0:
+                logging.info(f"\nProcessing URL {idx - 1}/{len(urls)/100}")
 
-        try:
-            response = requests.get(url, timeout=timeout)
-            response.raise_for_status()  # Raise exception for HTTP errors
-        except requests.RequestException as e:
-            logging.error(f"Failed to fetch the web page: {e}")
-            continue
-        except TimeoutError:
-            logging.error(f"Timeout occurred while fetching URL: {url}")
-            continue
+            tasks.append(fetch_url(session, url, timeout))
 
-        try:
-            tree = etree.HTML(response.content)
-            article_element = tree.find(".//article")
-            
-            if article_element is not None:
-                outer_html = etree.tostring(article_element, encoding='unicode')
-                
-                article_body = remove_elements(outer_html)
-                
-                article = []
-                for line in (i for i in article_body.split("\n") if len(i) >= 40):
-                    article.append(line)
-                articles_dict[urls["Title"][idx-1]] = article
-                #logging.info("Article has been extracted")
-            else:
-                logging.warning("No article content found on the page.")
+        results = await asyncio.gather(*tasks)
+
+        for idx, (url, result) in enumerate(zip(urls.Url, results), start=1):
+            if result is None:
                 continue
-        except Exception as e:
-            logging.error(f"Error extracting article content: {e} URL: {url}")
-            continue
+
+            try:
+                tree = etree.HTML(result)
+                article_element = tree.find(".//article")
+                if article_element is not None:
+                    outer_html = etree.tostring(article_element, encoding='unicode')
+                    article_body = remove_elements(outer_html)
+                    article = [line for line in article_body.split("\n") if len(line) >= 40]
+                    articles_dict[urls["Title"][idx - 1]] = article
+                else:
+                    logging.warning("No article content found on the page.")
+            except Exception as e:
+                logging.error(f"Error extracting article content from {url}: {e}")
 
     return articles_dict
 
