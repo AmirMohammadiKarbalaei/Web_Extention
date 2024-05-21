@@ -66,6 +66,9 @@ def process_news_data(urls, source_name, topics_to_drop):
     
     # Extract topics from 'Url'
     df_news['Topic'] = df_news['Url'].str.extract(r'com/([^/]+)/')[0]
+    # edge_1 = df_news['Url'].str.extract(r'/([^/]+)/([^/]+)/([^/]+)/([^/]+)/')
+    # df_news.drop(index=edge_1[(edge_1[1] == "live") | (edge_1[2] == "live") | (edge_1[3] == "live")].index, inplace=True)
+
     
     # Drop rows with unwanted topics
     df_news = df_news[~df_news['Topic'].isin(topics_to_drop)].reset_index(drop=True)
@@ -220,10 +223,10 @@ def request_sentences_from_urls(urls, timeout=20):
                 #logging.info("Article has been extracted")
             else:
                 logging.warning("No article content found on the page.")
-                articles_dict[url] = None
+                continue
         except Exception as e:
             logging.error(f"Error extracting article content: {e} URL: {url}")
-            articles_dict[url] = None
+            continue
 
     return articles_dict
 
