@@ -42,16 +42,16 @@ def fetch_and_process_news_data():
         with st.spinner("Extracting URLs from BBC sitemaps..."):
             urls = {}
             urls["bbc"] = Extract_todays_urls_from_sitemaps(BBC_news_sitemaps, namespaces, 'sitemap:lastmod')
-            st.write(f"Found {len(urls['bbc'])} URLs from BBC")
+            st.write(f"Found {len(urls['bbc'])} articles from BBC")
 
-        with st.spinner("Extracting URLs from Sky News sitemaps..."):
-            urls["sky"] = Extract_todays_urls_from_sitemaps(sky_news_sitemaps, namespaces, 'news:publication_date')
-            st.write(f"Found {len(urls['sky'])} URLs from Sky News")
+        # with st.spinner("Extracting URLs from Sky News sitemaps..."):
+        #     urls["sky"] = Extract_todays_urls_from_sitemaps(sky_news_sitemaps, namespaces, 'news:publication_date')
+        #     st.write(f"Found {len(urls['sky'])} URLs from Sky News")
 
-        bbc_topics_to_drop = {"pidgin", "hausa", "swahili", "naidheachdan"}
+        bbc_topics_to_drop = {"pidgin", "hausa", "swahili", "naidheachdan","cymrufyw"}
         with st.spinner("Processing BBC news data..."):
             df_BBC = process_news_data(urls, "bbc", bbc_topics_to_drop)
-            st.write("BBC news data processing complete")
+            st.write("Data processing complete!")
 
         # Uncomment and complete the following if Sky News processing is required
         # sky_topics_to_drop = {"arabic", "urdu"}
@@ -60,28 +60,41 @@ def fetch_and_process_news_data():
         #     st.write("Sky News data processing complete")
         # return pd.concat([df_BBC, df_Sky])
 
-    return df_BBC
+    return df_BBC.drop_duplicates("Title").reset_index()
 def main():
+    
     st.title('News App')
+    prefrences = st.multiselect(
+    "What are your favorite Topics",
+    ["news", "sport", "weather","newsround"])
+    with st.status("Collecting data...", expanded=True) as status:
+        df_BBC = fetch_and_process_news_data()
+        df_BBC = df_BBC[
+            (~df_BBC['Title'].str.contains('weekly round-up', case=False)) & 
+            (df_BBC['Title'] != 'One-minute World News')
+        ].drop_duplicates("Title").reset_index(drop=True)    
+        interactions = initialize_interactions()
+        st.write("embedding data...")
 
-    df_news = fetch_and_process_news_data()
-    interactions = initialize_interactions()
+        topics = list(prefrences)
 
-    streamlit_print_topic_counts(df_news, 'Today\'s Topic Distribution')
+        
+        content_embedding,df = collect_embed_content(df_BBC)
+        status.update(label="Download complete!", state="complete", expanded=False)
+    streamlit_print_topic_counts(df_BBC, 'Today\'s  English Topic Distribution')
 
-    topics = df_news['Topic'].unique()
-    selected_topic = st.selectbox('Select a topic:', topics)
+    selected_topic = st.radio('Select a topic to show:', topics,horizontal =True)
+    selected_news = df_BBC[df_BBC['Topic'] == selected_topic]
 
-    selected_news = df_news[df_news['Topic'] == selected_topic]
-    content_embedding = collect_embed_content(df_news)
-
-
-    st.subheader(f'Latest {selected_topic} News')
+    if len(prefrences)>0:
+        st.subheader(f'Latest {selected_topic} News')
+    else:
+        st.subheader(f'Please choose your prefrences')
     for index, row in selected_news.iterrows():
         st.markdown(f"""
             <div style="border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
                 <h4>{row['Title']}</h4>
-                <p><a href="{row['Url']}" target="_blank">Read more</a></p>
+                <p><a href="{row['Url']}" target="_blank">Read more...</a></p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -93,25 +106,47 @@ def main():
             if st.button("👎 Downvote", key=f"downvote_{index}"):
                 track_interaction(interactions, index, 'Downvoted')
 
+    
+    LOGO_URL_LARGE = "News-icon.jpg"
+    st.sidebar.image(LOGO_URL_LARGE)
     st.sidebar.subheader('Suggestions')
+    
+
 
     most_upvoted = sorted(interactions.items(), key=lambda x: x[1]['upvotes'], reverse=True)
 
-    
-    
     embeddings = content_embedding[1]
 
     index = faiss.IndexFlatL2(embeddings.shape[1])
     index.add(embeddings)
+    #st.write(len(df))
+    #st.write(df[12].Topic)
+
+    k = 4  # Number of nearest neighbors to search for
 
     for news_id, counts in most_upvoted:
-        if counts['upvotes'] > 0:
-            k = 3
-            D, I = index.search(embeddings, k=k)
-            for i in range(1,k,1):
-                    news_row = df_news.iloc[I[news_id][i]]
-                    st.sidebar.write(f"{news_row['Title']}")
-                    st.sidebar.write(f"Source: {news_row['Url']}")
+        # Check if the topic of the current news item is not in the user's preferences
+        if df.Topic[news_id] not in prefrences:
+            st.sidebar.write("Select Preferences please")
+            continue  # Skip to the next item in the loop
+
+        # Proceed only if the news item has upvotes
+        if counts['upvotes'] <= 0:
+            continue  # Skip to the next item in the loop
+
+        # Perform a search to get the k nearest neighbors
+        D, I = index.search(embeddings, k=k)
+        for i in range(1, k):  # Start from 1 to skip the first neighbor (itself)
+            # Fetch the news row corresponding to the current neighbor
+            news_row = df_BBC.iloc[I[news_id][i]]
+            
+            # Check if the neighbor's topic is in the user's preferences
+            if news_row.Topic not in prefrences:
+                continue  # Skip to the next neighbor
+
+            # Display the news title and source
+            st.sidebar.write(f"{news_row['Title']}")
+            st.sidebar.write(f"Source: {news_row['Url']}")
 
 if __name__ == '__main__':
     main()

@@ -62,7 +62,8 @@ def clean_text(text):
 
 def process_news_data(urls, source_name, topics_to_drop):
     # Create DataFrame from the dictionary
-    df_news = pd.DataFrame.from_dict(urls[source_name], orient='index').reset_index().rename(columns={'index': 'Url'})
+    df_news = pd.DataFrame.from_dict(urls[source_name], orient='index').reset_index(drop=True).rename(columns={'index': 'Url'})
+
     
     # Remove non-English entries
     df_news = df_news[df_news['Title'].apply(is_english_sentence)]
@@ -182,7 +183,8 @@ def remove_elements(input_string: str):
     """
     # Parse the input string as HTML
     soup = BeautifulSoup(input_string, 'html.parser')
-    
+    for script in soup(["script", "style"]):
+        script.decompose()
     # Remove all tags and their content
     cleaned_string = soup.get_text(separator=' ', strip=True)
     
@@ -198,40 +200,40 @@ def remove_elements(input_string: str):
 
 #     articles_dict = {}
 
-#     for idx, url in enumerate(list(urls.Url), start=1):
-#         if (idx-1)%10 ==0:
-#             logging.info(f"\nProcessing URL {idx-1}/{len(urls)}")
+    # for idx, url in enumerate(list(urls.Url), start=1):
+    #     if (idx-1)%10 ==0:
+    #         logging.info(f"\nProcessing URL {idx-1}/{len(urls)}")
 
-#         try:
-#             response = requests.get(url, timeout=timeout)
-#             response.raise_for_status()  # Raise exception for HTTP errors
-#         except requests.RequestException as e:
-#             logging.error(f"Failed to fetch the web page: {e}")
-#             continue
-#         except TimeoutError:
-#             logging.error(f"Timeout occurred while fetching URL: {url}")
-#             continue
+    #     try:
+    #         response = requests.get(url, timeout=timeout)
+    #         response.raise_for_status()  # Raise exception for HTTP errors
+    #     except requests.RequestException as e:
+    #         logging.error(f"Failed to fetch the web page: {e}")
+    #         continue
+    #     except TimeoutError:
+    #         logging.error(f"Timeout occurred while fetching URL: {url}")
+    #         continue
 
-#         try:
-#             tree = etree.HTML(response.content)
-#             article_element = tree.find(".//article")
+    #     try:
+    #         tree = etree.HTML(response.content)
+    #         article_element = tree.find(".//article")
             
-#             if article_element is not None:
-#                 outer_html = etree.tostring(article_element, encoding='unicode')
+    #         if article_element is not None:
+    #             outer_html = etree.tostring(article_element, encoding='unicode')
                 
-#                 article_body = remove_elements(outer_html)
+    #             article_body = remove_elements(outer_html)
                 
-#                 article = []
-#                 for line in (i for i in article_body.split("\n") if len(i) >= 40):
-#                     article.append(line)
-#                 articles_dict[urls["Title"][idx-1]] = article
-#                 #logging.info("Article has been extracted")
-#             else:
-#                 logging.warning("No article content found on the page.")
-#                 continue
-#         except Exception as e:
-#             logging.error(f"Error extracting article content: {e} URL: {url}")
-#             continue
+    #             article = []
+    #             for line in (i for i in article_body.split("\n") if len(i) >= 40):
+    #                 article.append(line)
+    #             articles_dict[urls["Title"][idx-1]] = article
+    #             #logging.info("Article has been extracted")
+    #         else:
+    #             logging.warning("No article content found on the page.")
+    #             continue
+    #     except Exception as e:
+    #         logging.error(f"Error extracting article content: {e} URL: {url}")
+    #         continue
 
 #     return articles_dict
 async def fetch_url(session, url, timeout):
@@ -269,10 +271,18 @@ async def request_sentences_from_urls_async(urls, timeout=20):
                     article = [line for line in article_body.split("\n") if len(line) >= 40]
                     articles_dict[urls["Title"][idx - 1]] = article
                 else:
-                    logging.warning("No article content found on the page.")
+                    # If no <article> element is found, try using BeautifulSoup with the specific ID
+                    soup = BeautifulSoup(result, 'html.parser')
+                    article_id = 'main-content'  # Replace with the actual ID you are targeting
+                    article_element = soup.find(id=article_id)
+                    if article_element:
+                        article_body = remove_elements(str(article_element))
+                        article = [line for line in article_body.split("\n") if len(line) >= 40]
+                        articles_dict[urls["Title"][idx - 1]] = article
+                    else:
+                        logging.warning(f"No article content found on the page with ID {article_id}.")
             except Exception as e:
-                logging.error(f"Error extracting article content from {url}: {e}")
-
+                logging.error(f"Error extracting article content from {url}: error: {e}")
     return articles_dict
 
 

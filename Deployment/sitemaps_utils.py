@@ -29,6 +29,56 @@ logging.basicConfig(level=logging.INFO)
 #nltk.download('stopwords')
 
 
+def remove_elements(input_string: str) -> str:
+    """
+    This function removes all HTML tags and their content from the input string,
+    and removes specific patterns such as "Published X hours ago" and "Image source".
+    """
+    # Parse the input string as HTML
+    soup = BeautifulSoup(input_string, 'html.parser')
+    
+    # Remove <script>, <style>, and <picture> tags and their content
+    for script in soup(["script", "style", "picture"]):
+        script.decompose()
+    
+    # Extract text from the parsed HTML
+    cleaned_string = soup.get_text(separator=' ', strip=True)
+
+    # Define regular expressions to remove unwanted patterns
+    patterns = [
+        r'\bPublished.*?\bago\b',  # Matches "Published X hours ago"
+        r'\bImage source\b',   # Matches "Image source, ..."
+        r'\bImage caption\b',  # Matches "Image caption, ..."
+        r'\bMedia caption\b',  # Matches "Media caption, ..."
+        r'\bGetty Images\b', 
+        r'\bBBC Wales News\b',         # Matches "BBC Wales News"
+        r'\bPublished\s\d{1,2}\s\w+\b',
+        #r'\bRelated Topics\b.*',
+        r'\bRelated Internet\b.*', 
+        r'\bBBC News Staff\b',
+        r'\bFollow\s.*?\snews.*\b',
+        r'\b\w+/\w+\b',
+        r'Follow\sBBC.*'           
+ 
+    ]
+
+    # Remove the matched patterns from the text
+    for pattern in patterns:
+        cleaned_string = re.sub(pattern, '', cleaned_string, flags=re.DOTALL)
+    
+    # Additional cleanup: remove extra spaces and newlines
+    cleaned_string = re.sub(r'["\'.,]+', '', cleaned_string)
+    cleaned_string = re.sub(r'\s+', ' ', cleaned_string).strip()
+    cleaned_string = cleaned_string.replace("This video can not be played To play this video you need to enable JavaScript in your browser.","")
+    string2 = "Sign up for our morning newsletter and get BBC News in your inbox."
+    cleaned_string = cleaned_string.replace(string2,"")
+
+    
+    article = []
+    for line in (i for i in cleaned_string.split("\n") if len(i) >= 10):
+        article.append(line)
+
+    return " ".join(article)
 
 def clean_text(text):
     """
@@ -62,7 +112,8 @@ def clean_text(text):
 
 def process_news_data(urls, source_name, topics_to_drop):
     # Create DataFrame from the dictionary
-    df_news = pd.DataFrame.from_dict(urls[source_name], orient='index').reset_index().rename(columns={'index': 'Url'})
+    df_news = pd.DataFrame.from_dict(urls[source_name], orient='index').reset_index(drop=True).rename(columns={'index': 'Url'})
+
     
     # Remove non-English entries
     df_news = df_news[df_news['Title'].apply(is_english_sentence)]
@@ -82,6 +133,7 @@ def process_news_data(urls, source_name, topics_to_drop):
     print_topic_counts(df_news, source_name)
     
     return df_news
+
 
 def Extract_todays_urls_from_sitemaps(sitemaps: list, namespaces: dict, date_tag: str):
     """
@@ -144,7 +196,7 @@ def print_topic_counts(data_frame:pd.DataFrame, section_name:str):
     print(f"------ {section_name} ------")
     topic_counts = data_frame['Topic'].value_counts()
     print(topic_counts.to_string())
-    print(f"Total        {topic_counts.sum()}")
+    print(f"Total English articles: {topic_counts.sum()}")
     print()
 
 
@@ -170,23 +222,6 @@ def calculate_similarity(title1:str, title2:str,model:str = 'distilbert-base-nli
     embedding_title2 = model.encode([title2])
     similarity_score = cosine_similarity(embedding_title1, embedding_title2)[0][0]
     return similarity_score
-
-
-
-
-
-
-def remove_elements(input_string: str):
-    """
-    This function removes all HTML tags and their content from the input string.
-    """
-    # Parse the input string as HTML
-    soup = BeautifulSoup(input_string, 'html.parser')
-    
-    # Remove all tags and their content
-    cleaned_string = soup.get_text(separator=' ', strip=True)
-    
-    return cleaned_string
 
 
 # def request_sentences_from_urls(urls, timeout=20):
@@ -250,7 +285,7 @@ async def request_sentences_from_urls_async(urls, timeout=20):
         tasks = []
         for idx, url in enumerate(urls.Url, start=1):
             if (idx - 1) % 100 == 0:
-                logging.info(f"\nProcessing URL {idx - 1}/{len(urls)/100}")
+                logging.info(f"\nProcessing URL {((idx - 1)//100)+1}/{(len(urls)//100)+1}")
 
             tasks.append(fetch_url(session, url, timeout))
 
@@ -269,12 +304,21 @@ async def request_sentences_from_urls_async(urls, timeout=20):
                     article = [line for line in article_body.split("\n") if len(line) >= 40]
                     articles_dict[urls["Title"][idx - 1]] = article
                 else:
-                    logging.warning("No article content found on the page.")
+                    # If no <article> element is found, try using BeautifulSoup with the specific ID
+                    soup = BeautifulSoup(result, 'html.parser')
+                    article_id = 'main-content'  # Replace with the actual ID you are targeting
+                    article_element = soup.find(id=article_id)
+                    if article_element:
+                        article_body = remove_elements(str(article_element))
+                        article = [line for line in article_body.split("\n") if len(line) >= 40]
+                        articles_dict[urls["Title"][idx - 1]] = article
+                    else:
+                        logging.warning(f"No article content found on the page with ID {article_id}.")
             except Exception as e:
-                logging.error(f"Error extracting article content from {url}: {e}")
+                logging.error(f"Error extracting article content from {url}: error: {e}")
+
 
     return articles_dict
-
 
 
 def Text_wrap(Text:str,width:int):

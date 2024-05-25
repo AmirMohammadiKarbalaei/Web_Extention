@@ -28,15 +28,14 @@ async def fetch_url(session, url, timeout):
     except Exception as e:
         logging.error(f"Error fetching URL {url}: {e}")
         return None
-
-async def request_sentences_from_urls_async(urls, timeout=20):
+async def request_sentences_from_urls_async_app(urls, timeout=20):
     articles_dict = {}
 
     async with aiohttp.ClientSession() as session:
         tasks = []
         for idx, url in enumerate(urls.Url, start=1):
             if (idx - 1) % 100 == 0:
-                logging.info(f"\nProcessing URL {idx - 1}/{len(urls)/100}")
+                logging.info(f"\nProcessing URL {((idx - 1)//100)+1}/{(len(urls)//100)+1}")
 
             tasks.append(fetch_url(session, url, timeout))
 
@@ -55,16 +54,35 @@ async def request_sentences_from_urls_async(urls, timeout=20):
                     article = [line for line in article_body.split("\n") if len(line) >= 40]
                     articles_dict[urls["Title"][idx - 1]] = article
                 else:
-                    logging.warning("No article content found on the page.")
+                    # If no <article> element is found, try using BeautifulSoup with the specific ID
+                    soup = BeautifulSoup(result, 'html.parser')
+                    article_id = 'main-content'  # Replace with the actual ID you are targeting
+                    article_element = soup.find(id=article_id)
+                    if article_element:
+                        article_body = remove_elements(str(article_element))
+                        article = [line for line in article_body.split("\n") if len(line) >= 40]
+                        articles_dict[urls["Title"][idx - 1]] = article
+                    else:
+                        logging.warning(f"No article content found on the page with ID {article_id}.")
             except Exception as e:
-                logging.error(f"Error extracting article content from {url}: {e}")
+                logging.error(f"Error extracting article content from {url}: error: {e}")
+
 
     return articles_dict
+
+
 @st.cache_data
 def collect_embed_content(df):
     with st.spinner("Fetching news content"):
-        data = df[(df.Topic == "news") | (df.Topic == "sport")]
-        bbc_news = asyncio.run(articles(data, timeout=20))
+
+        bbc_news = asyncio.run(articles(df, timeout=10))
+
+        #st.write("bbc_news:",len(bbc_news),"df:",len(df))
+
+        for title, content in bbc_news.items():
+            mask =  df['Title'] == title
+
+            df.loc[mask, 'content'] = content
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         tokenizer = DPRQuestionEncoderTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
@@ -94,16 +112,20 @@ def collect_embed_content(df):
         
         # Convert embeddings tensor to numpy arrays
         embeddings_np = [embedding.cpu().numpy() for embedding in embeddings]
+        
 
         # Convert embeddings to float32
         embeddings_np = [embedding.astype('float32') for embedding in embeddings_np]
         embeddings_np = np.array(embeddings_np).reshape(len(embeddings_np), 768)
         content_embedding = (list(bbc_news.values()), embeddings_np)
+        #st.write("embeddings_np:",len(embeddings_np),"df:",len(df))
+
+        df["embedding"] = list(embeddings_np)
         
         st.success("Content has been collected and embedded")
         my_bar.empty()
     
-    return content_embedding
+    return content_embedding,df
 # Function to load embeddings
 @st.cache_resource
 def load_embeddings():
@@ -127,52 +149,7 @@ def track_interaction(interactions, news_id, action):
     print(f"User interacted with news article {news_id} - {action}")
     print(interactions[news_id])
 
-# def request_sentences_from_urls_app(urls, timeout=20):
-#     """
-#     Extracts the main article content from a list of URLs using `requests` and `lxml`.
-#     Returns a dictionary containing article bodies for each URL.
-#     Handles fetch errors gracefully and returns None for failed URLs.
-#     """
 
-#     articles_dict = {}
-
-#     for idx, url in enumerate(list(urls.Url), start=1):
-#         if (idx-1)%50 ==0:
-#             st.write(f"\nProcessing URL {(idx-1)//50}/{len(urls)//50}")
-
-#         try:
-#             response = requests.get(url, timeout=timeout)
-#             response.raise_for_status()  # Raise exception for HTTP errors
-#         except requests.RequestException as e:
-#             st.error(f"Failed to fetch the web page: {e}")
-#             continue
-#         except TimeoutError:
-#             st.error(f"Timeout occurred while fetching URL: {url}")
-#             continue
-
-#         try:
-#             tree = etree.HTML(response.content)
-#             article_element = tree.find(".//article")
-            
-#             if article_element is not None:
-#                 outer_html = etree.tostring(article_element, encoding='unicode')
-                
-#                 article_body = remove_elements(outer_html)
-                
-#                 article = []
-#                 for line in (i for i in article_body.split("\n") if len(i) >= 40):
-#                     article.append(line)
-#                 articles_dict[urls["Title"][idx-1]] = article
-#                 #logging.info("Article has been extracted")
-#             else:
-#                 st.warning("No article content found on the page. URL: {url}")
-#                 continue
-#         except Exception as e:
-#             st.error(f"Error extracting article content: {e} URL: {url}")
-#             continue
-
-#     return articles_dict
-# Function to print topic counts
 def streamlit_print_topic_counts(data_frame: pd.DataFrame, section_name: str):
     st.subheader(section_name)
     topic_counts = data_frame['Topic'].value_counts()
@@ -182,5 +159,5 @@ def streamlit_print_topic_counts(data_frame: pd.DataFrame, section_name: str):
 # Main function for Streamlit app
 st.cache_resource
 async def articles(urls, timeout=20):
-    articles = await request_sentences_from_urls_async(urls, timeout)
+    articles = await request_sentences_from_urls_async_app(urls, timeout)
     return articles
