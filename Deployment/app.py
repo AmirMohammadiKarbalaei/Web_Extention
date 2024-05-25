@@ -71,14 +71,15 @@ def main():
         df_BBC = fetch_and_process_news_data()
         df_BBC = df_BBC[
             (~df_BBC['Title'].str.contains('weekly round-up', case=False)) & 
-            (df_BBC['Title'] != 'One-minute World News')].drop_duplicates("Title").reset_index(drop=True)    
+            (df_BBC['Title'] != 'One-minute World News')].drop_duplicates(subset="Title").reset_index(drop=True)    
         interactions = initialize_interactions()
         st.write("embedding data...")
+        st.write(df_BBC.columns)
 
         topics = list(prefrences)
 
         
-        content_embedding,df = collect_embed_content(df_BBC)
+        df = collect_embed_content(df_BBC)
         status.update(label="Download complete!", state="complete", expanded=False)
     streamlit_print_topic_counts(df_BBC, 'Today\'s  English Topic Distribution')
 
@@ -114,10 +115,11 @@ def main():
 
     most_upvoted = sorted(interactions.items(), key=lambda x: x[1]['upvotes'], reverse=True)
 
-    embeddings = content_embedding[1]
+    embeddings = [np.array(i) for i in df.embedding]
 
-    index = faiss.IndexFlatL2(embeddings.shape[1])
-    index.add(embeddings)
+
+    index = faiss.IndexFlatL2(np.array(embeddings).shape[1])
+    index.add(np.array(embeddings))
     #st.write(len(df))
     #st.write(df[12].Topic)
 
@@ -125,7 +127,7 @@ def main():
     #st.write(df)
     for news_id, counts in most_upvoted:
         # Check if the topic of the current news item is not in the user's preferences
-        if df.Topic[news_id] not in prefrences:
+        if df.topic[news_id] not in prefrences:
             st.sidebar.write("Select Preferences please")
             continue  # Skip to the next item in the loop
 
@@ -134,18 +136,18 @@ def main():
             continue  # Skip to the next item in the loop
 
         # Perform a search to get the k nearest neighbors
-        D, I = index.search(embeddings, k=k)
+        D, I = index.search(np.array(embeddings), k=k)
         for i in range(1, k):  # Start from 1 to skip the first neighbor (itself)
             # Fetch the news row corresponding to the current neighbor
-            news_row = df_BBC.iloc[I[news_id][i]]
+            news_row = df.iloc[I[news_id][i]]
             
             # Check if the neighbor's topic is in the user's preferences
-            if news_row.Topic not in prefrences:
+            if news_row.topic not in prefrences:
                 continue  # Skip to the next neighbor
 
             # Display the news title and source
-            st.sidebar.write(f"{news_row['Title']}")
-            st.sidebar.write(f"Source: {news_row['Url']}")
+            st.sidebar.write(f"{news_row['title']}")
+            st.sidebar.write(f"Source: {news_row['url']}")
 
 if __name__ == '__main__':
     main()

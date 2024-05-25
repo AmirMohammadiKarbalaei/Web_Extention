@@ -246,13 +246,13 @@ async def fetch_url(session, url, timeout):
         return None
 
 async def request_sentences_from_urls_async(urls, timeout=20):
-    articles_dict = {}
+    articles_df = pd.DataFrame(columns=["url","topic","title","content"])
 
     async with aiohttp.ClientSession() as session:
         tasks = []
         for idx, url in enumerate(urls.Url, start=1):
             if (idx - 1) % 100 == 0:
-                logging.info(f"\nProcessing URL {idx - 1}/{len(urls)/100}")
+                logging.info(f"\nProcessing URL {((idx - 1)//100)+1}/{(len(urls)//100)+1}")
 
             tasks.append(fetch_url(session, url, timeout))
 
@@ -269,7 +269,7 @@ async def request_sentences_from_urls_async(urls, timeout=20):
                     outer_html = etree.tostring(article_element, encoding='unicode')
                     article_body = remove_elements(outer_html)
                     article = [line for line in article_body.split("\n") if len(line) >= 40]
-                    articles_dict[urls["Title"][idx - 1]] = article
+                    articles_df.loc[idx - 1] = (urls["Url"][idx - 1],urls["Topic"][idx - 1],urls["Title"][idx - 1]," ".join(article))
                 else:
                     # If no <article> element is found, try using BeautifulSoup with the specific ID
                     soup = BeautifulSoup(result, 'html.parser')
@@ -278,12 +278,14 @@ async def request_sentences_from_urls_async(urls, timeout=20):
                     if article_element:
                         article_body = remove_elements(str(article_element))
                         article = [line for line in article_body.split("\n") if len(line) >= 40]
-                        articles_dict[urls["Title"][idx - 1]] = article
+                        articles_df.loc[idx - 1] = (urls["Url"][idx - 1],urls["Topic"][idx - 1],urls["Title"][idx - 1]," ".join(article))
                     else:
                         logging.warning(f"No article content found on the page with ID {article_id}.")
             except Exception as e:
                 logging.error(f"Error extracting article content from {url}: error: {e}")
-    return articles_dict
+
+
+    return articles_df
 
 
 

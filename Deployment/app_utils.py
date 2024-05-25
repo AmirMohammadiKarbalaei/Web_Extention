@@ -29,7 +29,7 @@ async def fetch_url(session, url, timeout):
         logging.error(f"Error fetching URL {url}: {e}")
         return None
 async def request_sentences_from_urls_async_app(urls, timeout=20):
-    articles_dict = {}
+    articles_df = pd.DataFrame(columns=["url","topic","title","content"])
 
     async with aiohttp.ClientSession() as session:
         tasks = []
@@ -52,7 +52,7 @@ async def request_sentences_from_urls_async_app(urls, timeout=20):
                     outer_html = etree.tostring(article_element, encoding='unicode')
                     article_body = remove_elements(outer_html)
                     article = [line for line in article_body.split("\n") if len(line) >= 40]
-                    articles_dict[urls["Title"][idx - 1]] = article
+                    articles_df.loc[idx - 1] = (urls["Url"][idx - 1],urls["Topic"][idx - 1],urls["Title"][idx - 1]," ".join(article))
                 else:
                     # If no <article> element is found, try using BeautifulSoup with the specific ID
                     soup = BeautifulSoup(result, 'html.parser')
@@ -61,21 +61,23 @@ async def request_sentences_from_urls_async_app(urls, timeout=20):
                     if article_element:
                         article_body = remove_elements(str(article_element))
                         article = [line for line in article_body.split("\n") if len(line) >= 40]
-                        articles_dict[urls["Title"][idx - 1]] = article
+                        articles_df.loc[idx - 1] = (urls["Url"][idx - 1],urls["Topic"][idx - 1],urls["Title"][idx - 1]," ".join(article))
                     else:
                         logging.warning(f"No article content found on the page with ID {article_id}.")
             except Exception as e:
                 logging.error(f"Error extracting article content from {url}: error: {e}")
 
 
-    return articles_dict
+    return articles_df
 
 
 @st.cache_data
 def collect_embed_content(df):
+
     with st.spinner("Fetching news content"):
         df = df.drop_duplicates(subset="Title").reset_index(drop = True)
-        bbc_news = asyncio.run(articles(df, timeout=10))
+        collected_df = asyncio.run(articles(df, timeout=10))
+        st.write(collected_df)
 
         # st.write("bbc_news:",len(bbc_news.items()),"df:",len(df))
 
@@ -86,7 +88,7 @@ def collect_embed_content(df):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         tokenizer = DPRQuestionEncoderTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
         encoder = DPRQuestionEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base").to(device)
-        article_main_body = list(bbc_news.values())
+        article_main_body = list(collected_df.content)
 
     with st.spinner("Embedding news content"):
         # Initialize progress bar
@@ -114,15 +116,16 @@ def collect_embed_content(df):
         # Convert embeddings to float32
         embeddings_np = [embedding.astype('float32') for embedding in embeddings_np]
         embeddings_np = np.array(embeddings_np).reshape(len(embeddings_np), 768)
-        content_embedding = (list(bbc_news.values()), embeddings_np)
+        embeddings_list = [embedding for embedding in embeddings_np]
+        #content_embedding = (list(bbc_news.values()), embeddings_np)
         #st.write("embeddings_np:",len(embeddings_np),"df:",len(df))
 
-        df["embedding"] = list(embeddings_np)
+        collected_df["embedding"] = embeddings_list
         
         st.success("Content has been collected and embedded")
         my_bar.empty()
     
-    return content_embedding, df
+    return collected_df
 # Function to load embeddings
 @st.cache_resource
 def load_embeddings():
