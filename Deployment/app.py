@@ -60,7 +60,7 @@ def fetch_and_process_news_data():
         #     st.write("Sky News data processing complete")
         # return pd.concat([df_BBC, df_Sky])
 
-    return df_BBC.drop_duplicates("Title").reset_index()
+    return df_BBC.drop_duplicates("Title").reset_index(drop=True)
 def main():
     
     st.title('News App')
@@ -71,8 +71,7 @@ def main():
         df_BBC = fetch_and_process_news_data()
         df_BBC = df_BBC[
             (~df_BBC['Title'].str.contains('weekly round-up', case=False)) & 
-            (df_BBC['Title'] != 'One-minute World News')
-        ].drop_duplicates("Title").reset_index(drop=True)    
+            (df_BBC['Title'] != 'One-minute World News')].drop_duplicates("Title").reset_index(drop=True)    
         interactions = initialize_interactions()
         st.write("embedding data...")
 
@@ -123,7 +122,7 @@ def main():
     #st.write(df[12].Topic)
 
     k = 4  # Number of nearest neighbors to search for
-
+    #st.write(df)
     for news_id, counts in most_upvoted:
         # Check if the topic of the current news item is not in the user's preferences
         if df.Topic[news_id] not in prefrences:

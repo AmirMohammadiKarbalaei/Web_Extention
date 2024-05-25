@@ -74,23 +74,20 @@ async def request_sentences_from_urls_async_app(urls, timeout=20):
 @st.cache_data
 def collect_embed_content(df):
     with st.spinner("Fetching news content"):
-
+        df = df.drop_duplicates(subset="Title").reset_index(drop = True)
         bbc_news = asyncio.run(articles(df, timeout=10))
 
-        #st.write("bbc_news:",len(bbc_news),"df:",len(df))
+        # st.write("bbc_news:",len(bbc_news.items()),"df:",len(df))
 
-        for title, content in bbc_news.items():
-            mask =  df['Title'] == title
-
-            df.loc[mask, 'content'] = content
-
+        # st.write(df)
+        # for title, content in bbc_news.items():
+        #     mask =  df['Title'] == title
+        #     df.loc[mask, 'content'] = content
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         tokenizer = DPRQuestionEncoderTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
         encoder = DPRQuestionEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base").to(device)
         article_main_body = list(bbc_news.values())
 
-
-        
     with st.spinner("Embedding news content"):
         # Initialize progress bar
         progress_text = "Embedding content in progress. Please wait."
@@ -125,7 +122,7 @@ def collect_embed_content(df):
         st.success("Content has been collected and embedded")
         my_bar.empty()
     
-    return content_embedding,df
+    return content_embedding, df
 # Function to load embeddings
 @st.cache_resource
 def load_embeddings():
