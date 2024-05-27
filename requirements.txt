@@ -1,6 +1,8 @@
 numpy
 streamlit==1.31.1
 scikit-learn==1.3.2
+numpy
+streamlit==1.31.1
 pandas
 faiss-cpu
 torch
@@ -10,3 +12,5 @@ requests
 nest_asyncio
 aiohttp
 langid
+nltk
+beautifulsoup4
