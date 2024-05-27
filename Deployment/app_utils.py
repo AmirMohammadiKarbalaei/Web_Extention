@@ -77,7 +77,6 @@ def collect_embed_content(df):
     with st.spinner("Fetching news content"):
         df = df.drop_duplicates(subset="Title").reset_index(drop = True)
         collected_df = asyncio.run(articles(df, timeout=10))
-        st.write(collected_df)
 
         # st.write("bbc_news:",len(bbc_news.items()),"df:",len(df))
 
@@ -122,7 +121,7 @@ def collect_embed_content(df):
 
         collected_df["embedding"] = embeddings_list
         
-        st.success("Content has been collected and embedded")
+        st.write("Content has been embedded!")
         my_bar.empty()
     
     return collected_df
@@ -137,6 +136,7 @@ def load_embeddings():
     return embeddings
 
 # Function to initialize interactions
+#@st.cache_resource
 def initialize_interactions():
     return defaultdict(lambda: {'upvotes': 0, 'downvotes': 0})
 

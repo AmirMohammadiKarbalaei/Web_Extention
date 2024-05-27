@@ -42,7 +42,7 @@ def fetch_and_process_news_data():
         with st.spinner("Extracting URLs from BBC sitemaps..."):
             urls = {}
             urls["bbc"] = Extract_todays_urls_from_sitemaps(BBC_news_sitemaps, namespaces, 'sitemap:lastmod')
-            st.write(f"Found {len(urls['bbc'])} articles from BBC")
+            #st.write(f"Found {len(urls['bbc'])} articles from BBC")
 
         # with st.spinner("Extracting URLs from Sky News sitemaps..."):
         #     urls["sky"] = Extract_todays_urls_from_sitemaps(sky_news_sitemaps, namespaces, 'news:publication_date')
@@ -51,7 +51,8 @@ def fetch_and_process_news_data():
         bbc_topics_to_drop = {"pidgin", "hausa", "swahili", "naidheachdan","cymrufyw"}
         with st.spinner("Processing BBC news data..."):
             df_BBC = process_news_data(urls, "bbc", bbc_topics_to_drop)
-            st.write("Data processing complete!")
+            
+            #st.write("Data processing complete!")
 
         # Uncomment and complete the following if Sky News processing is required
         # sky_topics_to_drop = {"arabic", "urdu"}
@@ -64,32 +65,35 @@ def fetch_and_process_news_data():
 def main():
     
     st.title('News App')
-    prefrences = st.multiselect(
-    "What are your favorite Topics",
-    ["news", "sport", "weather","newsround"])
+    
     with st.status("Collecting data...", expanded=True) as status:
         df_BBC = fetch_and_process_news_data()
         df_BBC = df_BBC[
             (~df_BBC['Title'].str.contains('weekly round-up', case=False)) & 
             (df_BBC['Title'] != 'One-minute World News')].drop_duplicates(subset="Title").reset_index(drop=True)    
+        st.write(f"Fetched & Processed {len(df_BBC)} articles from BBC.")
+        status.update(label=f"Fetched {len(df_BBC)} articles!")
         interactions = initialize_interactions()
         st.write("embedding data...")
-        st.write(df_BBC.columns)
 
-        topics = list(prefrences)
+        
 
         
         df = collect_embed_content(df_BBC)
         status.update(label="Download complete!", state="complete", expanded=False)
-    streamlit_print_topic_counts(df_BBC, 'Today\'s  English Topic Distribution')
-
-    selected_topic = st.radio('Select a topic to show:', topics,horizontal =True)
-    selected_news = df_BBC[df_BBC['Topic'] == selected_topic]
-
+    streamlit_print_topic_counts(df_BBC,'Today\'s Topics:')
+    prefrences = st.multiselect(
+    "What are your favorite Topics",
+    ["news", "sport", "weather","newsround"])
+    selected_topic = st.radio('Select a topic to show:', list(prefrences),horizontal =True)
     if len(prefrences)>0:
         st.subheader(f'Latest {selected_topic} News')
     else:
         st.subheader(f'Please choose your prefrences')
+
+    
+    selected_news = df_BBC[df_BBC['Topic'] == selected_topic]
+    
     for index, row in selected_news.iterrows():
         st.markdown(f"""
             <div style="border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
@@ -115,16 +119,58 @@ def main():
 
     most_upvoted = sorted(interactions.items(), key=lambda x: x[1]['upvotes'], reverse=True)
 
+    sorted_upvoted_idxs = [i[0] for idx, i in enumerate(most_upvoted) if i[1]["upvotes"] > 0]
+
     embeddings = [np.array(i) for i in df.embedding]
+
+
+    # index = faiss.IndexFlatL2(np.array(embeddings).shape[1])
+    # index.add(np.array(embeddings))
+    # k = 5
+    # # Perform a search to get the k nearest neighbors
+    # D, I = index.search(np.array(embeddings), k=k)
+
+
+    # related_articles = []
+    # for news_idx in sorted_upvoted_idxs:
+    #     if df.topic[int(news_idx)] not in prefrences:
+    #             print("Select Preferences please")
+    #             continue
+    # related_articles.append(I[int(news_idx)][1:])
+    # from collections import Counter
+    # flattened_list = [num for sublist in related_articles for num in sublist]
+
+    # # Step 2: Count the occurrences of each number
+    # counts = Counter(flattened_list)
+
+    # # Step 3: Sort the numbers based on their counts in descending order
+    # sorted_numbers = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+
+    # # Step 4: Extract the sorted numbers based on their counts
+    # result = [num for num, count in sorted_numbers]
+
+    # for i in result:  # Start from 1 to skip the first neighbor (itself)
+    #         # Fetch the news row corresponding to the current neighbor
+    #         news_row = df.iloc[i]
+            
+    #         # Check if the neighbor's topic is in the user's preferences
+    #         if news_row.topic not in prefrences:
+    #             continue  # Skip to the next neighbor
+
+    #         # Display the news title and source
+    #         st.sidebar.write(f"{news_row['title']}")
+    #         st.sidebar.write(f"Source: {news_row['url']}")
+
+    # embeddings = [np.array(i) for i in df.embedding]
 
 
     index = faiss.IndexFlatL2(np.array(embeddings).shape[1])
     index.add(np.array(embeddings))
-    #st.write(len(df))
-    #st.write(df[12].Topic)
+    k = 3
+    # Perform a search to get the k nearest neighbors
+    D, I = index.search(np.array(embeddings), k=k)
+   
 
-    k = 4  # Number of nearest neighbors to search for
-    #st.write(df)
     for news_id, counts in most_upvoted:
         # Check if the topic of the current news item is not in the user's preferences
         if df.topic[news_id] not in prefrences:
@@ -135,8 +181,7 @@ def main():
         if counts['upvotes'] <= 0:
             continue  # Skip to the next item in the loop
 
-        # Perform a search to get the k nearest neighbors
-        D, I = index.search(np.array(embeddings), k=k)
+        
         for i in range(1, k):  # Start from 1 to skip the first neighbor (itself)
             # Fetch the news row corresponding to the current neighbor
             news_row = df.iloc[I[news_id][i]]
