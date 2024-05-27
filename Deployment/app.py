@@ -111,8 +111,8 @@ def main():
                 track_interaction(interactions, index, 'Downvoted')
 
     
-    LOGO_URL_LARGE = "News-icon.jpg"
-    st.sidebar.image(LOGO_URL_LARGE)
+    # LOGO_URL_LARGE = "News-icon.jpg"
+    # st.sidebar.image(LOGO_URL_LARGE)
     st.sidebar.subheader('Suggestions')
     
 
