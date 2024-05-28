@@ -186,9 +186,6 @@ def main():
 
     for news_id, counts in most_upvoted:
         # Check if the topic of the current news item is not in the user's preferences
-        if df.topic[news_id] not in preferences:
-            st.sidebar.write("Select Preferences please")
-            continue
 
         if counts['upvotes'] <= 0:
             continue
