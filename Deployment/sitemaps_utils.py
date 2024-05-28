@@ -42,7 +42,13 @@ def remove_elements(input_string: str) -> str:
         script.decompose()
     
     # Extract text from the parsed HTML
-    cleaned_string = soup.get_text(separator=' ', strip=True)
+    cleaned_string = soup.get_text(separator='|', strip=True)
+    splitted = cleaned_string.split("|")
+    splitted_20 = [i for i in splitted if len(i)>20]
+    splitted_20 = ". ".join(splitted_20)
+    
+    
+    
 
     # Define regular expressions to remove unwanted patterns
     patterns = [
@@ -53,25 +59,30 @@ def remove_elements(input_string: str) -> str:
         r'\bGetty Images\b', 
         r'\bBBC Wales News\b',         # Matches "BBC Wales News"
         r'\bPublished\s\d{1,2}\s\w+\b',
-        #r'\bRelated Topics\b.*',
         r'\bRelated Internet\b.*', 
         r'\bBBC News Staff\b',
         r'\bFollow\s.*?\snews.*\b',
         r'\b\w+/\w+\b',
-        r'Follow\sBBC.*'           
+        r'Follow\sBBC.*',
+        r'["\',]+',
+        r'\s+',
+
  
     ]
 
     # Remove the matched patterns from the text
     for pattern in patterns:
-        cleaned_string = re.sub(pattern, '', cleaned_string, flags=re.DOTALL)
+        splitted_20 = re.sub(pattern, ' ', splitted_20, flags=re.DOTALL)
+
+
+    stuff_to_drop = ["fully signed version","Use this form to ask your question:","If you are reading this page and can t see the form you will need to visit the mobile version of the","to submit your question or send them via email to",
+                 "YourQuestions@bbc.co.uk","Please include your name age and location with any question you send in","Related internet links","This video can not be played","To play this video you need to enable JavaScript in your browser"
+                 ,"Sign up for our morning newsletter and get BBC News in your inbox.","Watch now on BBC iPlayer","Listen now on BBC Sounds"]
+    for i in stuff_to_drop:
+        splitted_20 = splitted_20.replace(i,"")
+
     
-    # Additional cleanup: remove extra spaces and newlines
-    cleaned_string = re.sub(r'["\'.,]+', '', cleaned_string)
-    cleaned_string = re.sub(r'\s+', ' ', cleaned_string).strip()
-    cleaned_string = cleaned_string.replace("This video can not be played To play this video you need to enable JavaScript in your browser.","")
-    string2 = "Sign up for our morning newsletter and get BBC News in your inbox."
-    cleaned_string = cleaned_string.replace(string2,"")
+    cleaned_string = re.sub(r'\.\.|\.\s\.', '.', splitted_20)
 
     
     article = []

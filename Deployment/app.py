@@ -82,14 +82,14 @@ def main():
         df = collect_embed_content(df_BBC)
         status.update(label="Download complete!", state="complete", expanded=False)
     streamlit_print_topic_counts(df_BBC,'Today\'s Topics:')
-    prefrences = st.multiselect(
+    preferences = st.multiselect(
     "What are your favorite Topics",
     ["news", "sport", "weather","newsround"])
-    selected_topic = st.radio('Select a topic to show:', list(prefrences),horizontal =True)
-    if len(prefrences)>0:
+    selected_topic = st.radio('Select a topic to show:', list(preferences),horizontal =True)
+    if len(preferences)>0:
         st.subheader(f'Latest {selected_topic} News')
     else:
-        st.subheader(f'Please choose your prefrences')
+        st.subheader(f'Please choose your preferences')
 
     
     selected_news = df_BBC[df_BBC['Topic'] == selected_topic]
@@ -113,7 +113,7 @@ def main():
     
     # LOGO_URL_LARGE = "News-icon.jpg"
     # st.sidebar.image(LOGO_URL_LARGE)
-    st.sidebar.subheader('Suggestions')
+
     
 
 
@@ -122,6 +122,7 @@ def main():
     sorted_upvoted_idxs = [i[0] for idx, i in enumerate(most_upvoted) if i[1]["upvotes"] > 0]
 
     embeddings = [np.array(i) for i in df.embedding]
+    embeddings_np = np.array(embeddings)
 
 
     # index = faiss.IndexFlatL2(np.array(embeddings).shape[1])
@@ -133,7 +134,7 @@ def main():
 
     # related_articles = []
     # for news_idx in sorted_upvoted_idxs:
-    #     if df.topic[int(news_idx)] not in prefrences:
+    #     if df.topic[int(news_idx)] not in preferences:
     #             print("Select Preferences please")
     #             continue
     # related_articles.append(I[int(news_idx)][1:])
@@ -154,7 +155,7 @@ def main():
     #         news_row = df.iloc[i]
             
     #         # Check if the neighbor's topic is in the user's preferences
-    #         if news_row.topic not in prefrences:
+    #         if news_row.topic not in preferences:
     #             continue  # Skip to the next neighbor
 
     #         # Display the news title and source
@@ -162,37 +163,57 @@ def main():
     #         st.sidebar.write(f"Source: {news_row['url']}")
 
     # embeddings = [np.array(i) for i in df.embedding]
+    title_style = """
+    <div style='font-size:15px; color:#white; margin-bottom:10px;'>
+        {title}
+    </div>
+        """
+
+    link_style = """
+    <div style='margin-top:5px;'>
+        <a href='{url}' style='color:#1f77b4; text-decoration:none; font-size:16px;'>
+            Source
+        </a>
+    </div>"""
 
 
-    index = faiss.IndexFlatL2(np.array(embeddings).shape[1])
-    index.add(np.array(embeddings))
+    index = faiss.IndexFlatL2(embeddings_np.shape[1])
+    index.add(embeddings_np)
     k = 3
     # Perform a search to get the k nearest neighbors
-    D, I = index.search(np.array(embeddings), k=k)
-   
+    D, I = index.search(embeddings_np, k=k)
+    other_topics_printed,Suggestions = True,True
 
     for news_id, counts in most_upvoted:
         # Check if the topic of the current news item is not in the user's preferences
-        if df.topic[news_id] not in prefrences:
+        if df.topic[news_id] not in preferences:
             st.sidebar.write("Select Preferences please")
-            continue  # Skip to the next item in the loop
+            continue
 
-        # Proceed only if the news item has upvotes
         if counts['upvotes'] <= 0:
-            continue  # Skip to the next item in the loop
-
+            continue
         
         for i in range(1, k):  # Start from 1 to skip the first neighbor (itself)
             # Fetch the news row corresponding to the current neighbor
             news_row = df.iloc[I[news_id][i]]
+            print(I[news_id][i])
             
-            # Check if the neighbor's topic is in the user's preferences
-            if news_row.topic not in prefrences:
-                continue  # Skip to the next neighbor
 
-            # Display the news title and source
-            st.sidebar.write(f"{news_row['title']}")
-            st.sidebar.write(f"Source: {news_row['url']}")
+            
 
+            if news_row.topic in preferences:
+                if Suggestions:
+                    st.sidebar.header('Suggestions:')
+                    Suggestions = False
+                
+                st.sidebar.markdown(title_style.format(title=news_row['title']), unsafe_allow_html=True)
+                st.sidebar.markdown(link_style.format(url=news_row['url']), unsafe_allow_html=True)
+            else:
+                if other_topics_printed:
+                    st.sidebar.subheader("Similar articles from other topics:")
+                    other_topics_printed = False
+
+                st.sidebar.markdown(title_style.format(title=news_row['title']), unsafe_allow_html=True)
+                st.sidebar.markdown(link_style.format(url=news_row['url']), unsafe_allow_html=True)
 if __name__ == '__main__':
     main()

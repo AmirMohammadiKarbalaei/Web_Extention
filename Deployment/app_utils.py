@@ -63,9 +63,13 @@ async def request_sentences_from_urls_async_app(urls, timeout=20):
                         article = [line for line in article_body.split("\n") if len(line) >= 40]
                         articles_df.loc[idx - 1] = (urls["Url"][idx - 1],urls["Topic"][idx - 1],urls["Title"][idx - 1]," ".join(article))
                     else:
-                        logging.warning(f"No article content found on the page with ID {url}.")
+                        logging.warning(f"No article content found on the page with ID {article_id}.")
             except Exception as e:
                 logging.error(f"Error extracting article content from {url}: error: {e}")
+    
+    articles_df = articles_df[
+            (~articles_df['title'].str.contains('weekly round-up', case=False)) & 
+            (articles_df['title'] != 'One-minute World News')].drop_duplicates(subset="title").reset_index(drop=True)
 
 
     return articles_df
