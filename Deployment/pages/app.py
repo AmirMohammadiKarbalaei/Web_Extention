@@ -124,45 +124,6 @@ def main():
     embeddings = [np.array(i) for i in df.embedding]
     embeddings_np = np.array(embeddings)
 
-
-    # index = faiss.IndexFlatL2(np.array(embeddings).shape[1])
-    # index.add(np.array(embeddings))
-    # k = 5
-    # # Perform a search to get the k nearest neighbors
-    # D, I = index.search(np.array(embeddings), k=k)
-
-
-    # related_articles = []
-    # for news_idx in sorted_upvoted_idxs:
-    #     if df.topic[int(news_idx)] not in preferences:
-    #             print("Select Preferences please")
-    #             continue
-    # related_articles.append(I[int(news_idx)][1:])
-    # from collections import Counter
-    # flattened_list = [num for sublist in related_articles for num in sublist]
-
-    # # Step 2: Count the occurrences of each number
-    # counts = Counter(flattened_list)
-
-    # # Step 3: Sort the numbers based on their counts in descending order
-    # sorted_numbers = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-
-    # # Step 4: Extract the sorted numbers based on their counts
-    # result = [num for num, count in sorted_numbers]
-
-    # for i in result:  # Start from 1 to skip the first neighbor (itself)
-    #         # Fetch the news row corresponding to the current neighbor
-    #         news_row = df.iloc[i]
-            
-    #         # Check if the neighbor's topic is in the user's preferences
-    #         if news_row.topic not in preferences:
-    #             continue  # Skip to the next neighbor
-
-    #         # Display the news title and source
-    #         st.sidebar.write(f"{news_row['title']}")
-    #         st.sidebar.write(f"Source: {news_row['url']}")
-
-    # embeddings = [np.array(i) for i in df.embedding]
     title_style = """
     <div style='font-size:15px; color:#white; margin-bottom:10px;'>
         {title}
